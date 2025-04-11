@@ -1,7 +1,5 @@
 # Polygon
 
-Symbolic Reasoning for SQL using Conflict-Driven Under-Approximation Search
-
 ## Prerequisites
 
 - Python 3.11 or later
