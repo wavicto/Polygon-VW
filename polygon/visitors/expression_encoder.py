@@ -461,6 +461,13 @@ class ExpressionEncoder:
                 default_val, default_null = node.args[1].accept(self)
 
                 return If(Not(if_null), if_val, default_val), And([if_null, default_null])
+            
+            if node.operator == 'if':
+                condition_val, condition_null = node.args[0].accept(self)
+                one_val, one_null = node.args[1].accept(self)
+                two_val, two_null = node.args[2].accept(self)
+
+                return If(And([Not(condition_null), condition_val]), one_val, two_val), If(condition_null, two_null, If(condition_val, one_null, two_null))
 
             if node.operator == 'round':
                 return node.args[0].accept(self)
