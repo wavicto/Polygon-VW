@@ -257,17 +257,20 @@ class GroupExpressionEncoder:
                 if node.operator == 'count' and not node.args[0] and isinstance(node.args[1], Attribute) and node.args[1].name == '*':
                     in_groups = [SMTGrouping(self.groupby_table.table_id, tuple_id, self.group_id)
                                  for tuple_id in range(input_table.bound)]
-                    return Sum([If(in_group, Int(1), Int(0)) for in_group in in_groups]), Bool(False)
-
+                    not_deleted = [Not(Deleted(input_table.table_id, tuple_id)) for tuple_id in range(input_table.bound)]
+                    return Sum([If(And([in_groups[i], not_deleted[i]]), Int(1), Int(0)) for i in range(len(in_groups))]), Bool(False)
+          
                 agg_exp_encoder = ExpressionEncoder(input_table, self.env)
 
                 # find
                 to_be_aggregated = []
                 for tuple_id in range(input_table.bound):
                     val, null = agg_exp_encoder.expression_for_tuple(node.args[1], tuple_id)
+                    deleted_flag = Deleted(input_table.table_id, tuple_id)
                     if val.return_type() == 'Bool':
                         val = If(val, Int(1), Int(0))
                     # ret is a (val, null, in_group) pair
+                    null = Or([null, deleted_flag])
                     ret = (
                         val,
                         null,
