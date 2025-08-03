@@ -246,16 +246,24 @@ class GroupExpressionEncoder:
                 return node.args[0].accept(self)
 
             if node.operator in ['min', 'max', 'count', 'sum', 'avg']:
+                from polygon.ast.filter import Filter
+                from polygon.formulas.filter import FFilter
+
+                input_table = self.input_table
+                if len(node.args) == 3 and isinstance(node.args[2], Filter):
+                        f = FFilter(input_table, node.args[2], self.env)
+                        input_table = f.output
+
                 if node.operator == 'count' and not node.args[0] and isinstance(node.args[1], Attribute) and node.args[1].name == '*':
                     in_groups = [SMTGrouping(self.groupby_table.table_id, tuple_id, self.group_id)
-                                 for tuple_id in range(self.input_table.bound)]
+                                 for tuple_id in range(input_table.bound)]
                     return Sum([If(in_group, Int(1), Int(0)) for in_group in in_groups]), Bool(False)
 
-                agg_exp_encoder = ExpressionEncoder(self.input_table, self.env)
+                agg_exp_encoder = ExpressionEncoder(input_table, self.env)
 
                 # find
                 to_be_aggregated = []
-                for tuple_id in range(self.input_table.bound):
+                for tuple_id in range(input_table.bound):
                     val, null = agg_exp_encoder.expression_for_tuple(node.args[1], tuple_id)
                     if val.return_type() == 'Bool':
                         val = If(val, Int(1), Int(0))

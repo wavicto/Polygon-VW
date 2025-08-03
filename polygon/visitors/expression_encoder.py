@@ -209,7 +209,7 @@ class ExpressionEncoder:
                 return val, null
 
         return CaseWhen(0)
-
+    
     def visit_Expression(self, node):
         if isinstance(node.operator_callable, Operator):
             args = [arg.accept(self) for arg in node.args]
@@ -475,22 +475,25 @@ class ExpressionEncoder:
             # aggregate functions
             if node.operator in ['min', 'max', 'count', 'sum', 'avg']:
                 from polygon.ast.filter import Filter
-                if node.operator == 'count' and not node.args[0] and isinstance(node.args[1], Attribute) and node.args[1].name == '*':
-                    if len(node.args) == 3 and isinstance(node.args[2], Filter):
-                        from polygon.visitors.query_encoder import QueryEncoder
-                        visitor = QueryEncoder(self.env, outer_tuple_id=self.tuple_idx)
-                        sub_table = node.args[2].accept(visitor)
-                        return Sum([Not(Deleted(sub_table.table_id, tuple_id)) for tuple_id in range(sub_table.bound)]), Bool(False)
-                    else:
-                        return Sum([Not(Deleted(self.table.table_id, tuple_id)) for tuple_id in range(self.table.bound)]), Bool(False)
+                from polygon.formulas.filter import FFilter
 
-                agg_exp_encoder = ExpressionEncoder(self.table, self.env)
+                input_table = self.table
+
+                if len(node.args) == 3 and isinstance(node.args[2], Filter):
+                        f = FFilter(self.table, node.args[2], self.env)
+                        input_table = f.output
+
+                if node.operator == 'count' and not node.args[0] and isinstance(node.args[1], Attribute) and node.args[1].name == '*':
+                        return Sum([Not(Deleted(input_table.table_id, tuple_id)) for tuple_id in range(input_table.bound)]), Bool(False)
+
+                agg_exp_encoder = ExpressionEncoder(input_table, self.env)
                 to_be_aggregated = []
-                for tuple_id in range(self.table.bound):
+                
+                for tuple_id in range(input_table.bound):
                     # ret is a (val, null, deleted) pair
                     ret = (
                         *agg_exp_encoder.expression_for_tuple(node.args[1], tuple_id),
-                        Deleted(self.table.table_id, tuple_id)
+                        Deleted(input_table.table_id, tuple_id)
                     )
                     to_be_aggregated.append(ret)
 

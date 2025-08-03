@@ -387,8 +387,8 @@ class SQLParser:
                     elif isinstance(attr['value'], dict):
                         # select target is an expression
                         exp = self.parse_expression(attr['value'])
-                        if 'filter' in select_clause:
-                            where_clause = self.parse_filter(select_clause['filter'])
+                        if 'filter' in attr:
+                            where_clause = self.parse_filter(attr['filter'])
                             exp.args.append(where_clause)
                         exp.alias = alias
                         target_list.append(exp)
