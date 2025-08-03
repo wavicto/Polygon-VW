@@ -387,6 +387,9 @@ class SQLParser:
                     elif isinstance(attr['value'], dict):
                         # select target is an expression
                         exp = self.parse_expression(attr['value'])
+                        if 'filter' in select_clause:
+                            where_clause = self.parse_filter(select_clause['filter'])
+                            exp.args.append(where_clause)
                         exp.alias = alias
                         target_list.append(exp)
                     else:
@@ -407,6 +410,9 @@ class SQLParser:
                 elif isinstance(select_clause['value'], dict):
                     # select target is an expression
                     exp = self.parse_expression(select_clause['value'])
+                    if 'filter' in select_clause:
+                            where_clause = self.parse_filter(select_clause['filter'])
+                            exp.args.append(where_clause)
                     exp.alias = alias
                     target_list.append(exp)
                 else:
@@ -489,101 +495,101 @@ class SQLParser:
         return OrderBy(order_by_expressions, sort_orders)
 
     def parse_expression(self, exp) -> Expression | Literal:
-        if isinstance(exp, int | bool | str | float):
-            return Literal(exp)
+            if isinstance(exp, int | bool | str | float):
+                return Literal(exp)
 
-        # special case: DISTINCT aggregate function call
-        # TODO: refactor
-        if len(exp) == 2 and 'distinct' in exp:
-            distinct = exp['distinct']
-            agg_fun = list(exp.keys())[1]
-            arg = exp[agg_fun]
-            if isinstance(arg, dict):
-                arg = self.parse_expression(arg)
-            else:
-                arg = Attribute(arg)
-            return Expression(operator=agg_fun, args=[distinct, arg])
-
-        operator = next(iter(exp))
-
-        # cast as type: {'cast': [{'date': '2020-05-03'}, {'date': {}}]}
-        if exp[operator] == {}:
-            return Literal(operator)
-
-        # special case: the dict encapsulates just a string literal
-        if operator == 'literal':
-            # value set of IN
-            if isinstance(exp['literal'], list):
-                return [self.parse_expression(val) for val in exp['literal']]
-            return self.parse_expression(exp['literal'])
-        elif operator == 'date':
-            if 'date' in exp['date']:
-                return Literal(datetime.datetime.fromisoformat(exp['date']['date']).date())
-            if exp['date'] == {}:
-                return None
-            return Literal(datetime.datetime.fromisoformat(exp['date']).date())
-        elif operator == 'time':
-            if 'time' in exp['time']:
-                return Literal(time.strptime(exp['time']['time'], '%H:%M:%S'))
-            return Literal(time.strptime(exp['time'], '%H:%M:%S'))
-
-        # expression is a CASE WHEN
-        if operator == 'case':
-            return self.parse_case_when(exp[operator])
-
-        args = []
-        if isinstance(exp[operator], list):
-            # a list of arguments
-            for operand in exp[operator]:
-                # arg is a literal
-                if isinstance(operand, int | float | bool):
-                    args.append(Literal(operand))
-                # arg is an attribute
-                elif isinstance(operand, str):
-                    args.append(Attribute(operand))
-                # arg is an expression (or string literal)
-                elif isinstance(operand, dict):
-                    if 'select' in operand or 'select_distinct' in operand:
-                        args.append(self.parse_query(operand))
-                    else:
-                        args.append(self.parse_expression(operand))
-                elif isinstance(operand, list):
-                    arg = []
-                    for op in operand:
-                        if isinstance(op, dict):
-                            if 'select' in op or 'select_distinct' in op:
-                                arg.append(self.parse_query(op))
-                            else:
-                                arg.append(self.parse_expression(op))
-                        else:
-                            arg.append(Attribute(op))
-                    args.append(arg)
+            # special case: DISTINCT aggregate function call
+            # TODO: refactor
+            if len(exp) == 2 and 'distinct' in exp:
+                distinct = exp['distinct']
+                agg_fun = list(exp.keys())[1]
+                arg = exp[agg_fun]
+                if isinstance(arg, dict):
+                    arg = self.parse_expression(arg)
                 else:
-                    raise NotImplementedError
-        # single argument
-        elif isinstance(exp[operator], dict):
-            # arg is an expression (or string literal)
-            if 'select' in exp[operator] or 'select_distinct' in exp[operator]:
-                args.append(self.parse_query(exp[operator]))
+                    arg = Attribute(arg)
+                return Expression(operator=agg_fun, args=[distinct, arg])
+
+            operator = next(iter(exp))
+
+            # cast as type: {'cast': [{'date': '2020-05-03'}, {'date': {}}]}
+            if exp[operator] == {}:
+                return Literal(operator)
+
+            # special case: the dict encapsulates just a string literal
+            if operator == 'literal':
+                # value set of IN
+                if isinstance(exp['literal'], list):
+                    return [self.parse_expression(val) for val in exp['literal']]
+                return self.parse_expression(exp['literal'])
+            elif operator == 'date':
+                if 'date' in exp['date']:
+                    return Literal(datetime.datetime.fromisoformat(exp['date']['date']).date())
+                if exp['date'] == {}:
+                    return None
+                return Literal(datetime.datetime.fromisoformat(exp['date']).date())
+            elif operator == 'time':
+                if 'time' in exp['time']:
+                    return Literal(time.strptime(exp['time']['time'], '%H:%M:%S'))
+                return Literal(time.strptime(exp['time'], '%H:%M:%S'))
+
+            # expression is a CASE WHEN
+            if operator == 'case':
+                return self.parse_case_when(exp[operator])
+
+            args = []
+            if isinstance(exp[operator], list):
+                # a list of arguments
+                for operand in exp[operator]:
+                    # arg is a literal
+                    if isinstance(operand, int | float | bool):
+                        args.append(Literal(operand))
+                    # arg is an attribute
+                    elif isinstance(operand, str):
+                        args.append(Attribute(operand))
+                    # arg is an expression (or string literal)
+                    elif isinstance(operand, dict):
+                        if 'select' in operand or 'select_distinct' in operand:
+                            args.append(self.parse_query(operand))
+                        else:
+                            args.append(self.parse_expression(operand))
+                    elif isinstance(operand, list):
+                        arg = []
+                        for op in operand:
+                            if isinstance(op, dict):
+                                if 'select' in op or 'select_distinct' in op:
+                                    arg.append(self.parse_query(op))
+                                else:
+                                    arg.append(self.parse_expression(op))
+                            else:
+                                arg.append(Attribute(op))
+                        args.append(arg)
+                    else:
+                        raise NotImplementedError
+            # single argument
+            elif isinstance(exp[operator], dict):
+                # arg is an expression (or string literal)
+                if 'select' in exp[operator] or 'select_distinct' in exp[operator]:
+                    args.append(self.parse_query(exp[operator]))
+                else:
+                    args.append(self.parse_expression(exp[operator]))
+            elif isinstance(exp[operator], int | bool):
+                # arg is a literal
+                args.append(Literal(exp[operator]))
+            elif isinstance(exp[operator], str):
+                # arg is an attribute
+                args.append(Attribute(exp[operator]))
+            elif 'null' in exp:
+                return Literal(None)
             else:
-                args.append(self.parse_expression(exp[operator]))
-        elif isinstance(exp[operator], int | bool):
-            # arg is a literal
-            args.append(Literal(exp[operator]))
-        elif isinstance(exp[operator], str):
-            # arg is an attribute
-            args.append(Attribute(exp[operator]))
-        elif 'null' in exp:
-            return Literal(None)
-        else:
-            raise NotImplementedError(exp)
+                raise NotImplementedError(exp)
 
-        if operator in ['max', 'min', 'sum', 'avg', 'count']:
-            args = [False, *args]
+            if operator in ['max', 'min', 'sum', 'avg', 'count']:
+                args = [False, *args]
 
-        if operator in ['add']:
-            return functools.reduce(lambda x, y: Expression(operator, [x, y]), args)
-        return Expression(operator, args)
+            if operator in ['add']:
+                return functools.reduce(lambda x, y: Expression(operator, [x, y]), args)
+            return Expression(operator, args)
 
     def parse_case_when(self, exp) -> CaseWhen:
         cases = []

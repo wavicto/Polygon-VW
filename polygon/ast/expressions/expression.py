@@ -103,7 +103,6 @@ class Expression(Node):
                     expression_str += f"({', '.join([str(x) for x in self.args[1]])})"
                 else:
                     expression_str += f'({self.args[1]})'
-
             else:
                 expression_str = f"{str(self.operator_callable.name).upper()}({', '.join([f'({arg})' if isinstance(arg, Query) else str(arg) for arg in self.args])})"
 

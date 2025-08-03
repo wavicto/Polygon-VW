@@ -474,8 +474,15 @@ class ExpressionEncoder:
 
             # aggregate functions
             if node.operator in ['min', 'max', 'count', 'sum', 'avg']:
+                from polygon.ast.filter import Filter
                 if node.operator == 'count' and not node.args[0] and isinstance(node.args[1], Attribute) and node.args[1].name == '*':
-                    return Sum([Not(Deleted(self.table.table_id, tuple_id)) for tuple_id in range(self.table.bound)]), Bool(False)
+                    if len(node.args) == 3 and isinstance(node.args[2], Filter):
+                        from polygon.visitors.query_encoder import QueryEncoder
+                        visitor = QueryEncoder(self.env, outer_tuple_id=self.tuple_idx)
+                        sub_table = node.args[2].accept(visitor)
+                        return Sum([Not(Deleted(sub_table.table_id, tuple_id)) for tuple_id in range(sub_table.bound)]), Bool(False)
+                    else:
+                        return Sum([Not(Deleted(self.table.table_id, tuple_id)) for tuple_id in range(self.table.bound)]), Bool(False)
 
                 agg_exp_encoder = ExpressionEncoder(self.table, self.env)
                 to_be_aggregated = []
