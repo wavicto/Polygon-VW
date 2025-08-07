@@ -324,7 +324,7 @@ class SQLParser:
                 cte_name = cte['name']
                 cte_query = self.parse_query(cte['value'])
                 with_clause[cte_name] = cte_query
-
+        
         if 'select' in query:
             select_clause = self.parse_select(query['select'])
         elif 'select_distinct' in query:
@@ -497,6 +497,12 @@ class SQLParser:
     def parse_expression(self, exp) -> Expression | Literal:
             if isinstance(exp, int | bool | str | float):
                 return Literal(exp)
+            
+            if 'value' in exp and 'filter' in exp:
+                f = self.parse_filter(exp['filter'])
+                exp = self.parse_expression(exp['value'])
+                exp.args.append(f)
+                return exp
 
             # special case: DISTINCT aggregate function call
             # TODO: refactor
@@ -586,7 +592,7 @@ class SQLParser:
 
             if operator in ['max', 'min', 'sum', 'avg', 'count']:
                 args = [False, *args]
-
+            
             if operator in ['add']:
                 return functools.reduce(lambda x, y: Expression(operator, [x, y]), args)
             return Expression(operator, args)

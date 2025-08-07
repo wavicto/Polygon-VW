@@ -86,7 +86,22 @@ def main():
         False
     ]
 
-    tests = [t1, t2, t3]
+    t4 = [
+        """
+        SELECT
+            SUM(age) FILTER (WHERE age < 40) + SUM(age) FILTER (WHERE age >= 40) AS sum
+        FROM Employees;
+        """,
+
+        """
+        SELECT
+            SUM(age) FILTER(WHERE age > 40) + COUNT(*) FILTER (WHERE age >= 40) AS sum
+        FROM Employees;
+        """,
+        False
+    ]
+
+    tests = [t1, t2, t3, t4]
 
     process_queries(env, tests, schema, constraints, False)
 
