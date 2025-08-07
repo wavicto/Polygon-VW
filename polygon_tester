@@ -1,0 +1,146 @@
+import logging
+
+from polygon.testers.mysql_tester import MySQLTester
+from polygon.testers.mysql_tester import DB_CONFIG
+from polygon.environment import Environment
+from polygon.logger import logger
+from polygon.sql_parser import SQLParser
+
+def main():
+    logger.setLevel(logging.DEBUG)
+    
+    schema = [
+        {
+            "TableName": "Employees",
+            "PKeys": [
+                {
+                    "Name": "emp_id",
+                    "Type": "int"
+                }
+            ],
+            "FKeys": [],
+            "Others": [
+                {
+                    "Name": "name",
+                    "Type": "varchar"
+                },
+                {
+                    "Name": "age",
+                    "Type": "int"
+                }
+            ]
+        }
+    ]
+    constraints = [{'distinct': ['Employees.emp_id']}]
+
+    env = Environment(schema, constraints, bound=4, time_budget=60)
+
+    t1 = [
+        """
+        SELECT
+            name,
+            SUM(age) FILTER (WHERE age >= 30) AS over_30
+        FROM Employees
+        GROUP BY name;
+        """,
+
+        """
+        SELECT
+            name,
+            SUM(age) FILTER (WHERE age <= 30) AS over_30
+        FROM Employees
+        GROUP BY name;
+        """,
+        False
+    ]
+
+    t2 = [
+    """
+    SELECT
+        name,
+        IF(age > 30, 'old', 'young') AS group
+    FROM Employees;
+    """,
+
+    """
+    SELECT
+        name,
+        CASE WHEN age > 30 THEN 'old' ELSE 'young' END AS group
+    FROM Employees;
+    """,
+    True
+    ]
+
+    t3 = [
+        """
+        SELECT
+            SUM(age) FILTER (WHERE age < 40) AS sum
+        FROM Employees;
+        """,
+
+        """
+        SELECT
+            SUM(age) FILTER(WHERE age > 40) AS sum
+        FROM Employees;
+        """,
+        False
+    ]
+
+    tests = [t1, t2, t3]
+
+    process_queries(env, tests, schema, constraints, False)
+
+
+def process_queries(env, tests, schema, constraints, extra_info):
+    parser = SQLParser()
+
+    for idx, test in enumerate(tests, start=1):
+        *queries, expected = test
+
+        eq, cex, checking_time, total_time, ret = env.check(*queries)
+
+        print()
+        print(f"Test #{idx}")
+        print(f"Expected equivalence: {expected}")
+        print(f"Actual equivalence: {eq}")
+        passed = (eq == expected)
+        if passed: 
+            print("Result: PASS")
+        else:
+            print("Result: FAILED")
+        print()
+
+        if extra_info:
+            print(f"Check output: {ret}\n")
+
+            print("Parsed JSONs:")
+            jsons = []
+            for query in queries:
+                parsed = parser.parse(query)
+                jsons.append(parsed)
+                print(parsed)
+                print()
+
+            print("ASTs:")
+            asts = []
+            for j in jsons:
+                ast = parser.parse_query(j)
+                asts.append(ast)
+                print(ast)
+                print()
+
+            if eq is None:
+                print('ERR')
+            else:
+                if not eq:
+                    print('NEQ', total_time)
+                    logger.info(cex)
+                    with MySQLTester(DB_CONFIG, schema) as tester:
+                        tester.create_all_databases([cex], constraints)
+                        rejected = tester.test_pair(*queries)
+                        print(rejected)
+                else:
+                    print('EQ')
+
+if __name__ == '__main__':
+    main()
