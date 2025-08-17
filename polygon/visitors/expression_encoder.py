@@ -475,25 +475,27 @@ class ExpressionEncoder:
             # aggregate functions
             if node.operator in ['min', 'max', 'count', 'sum', 'avg']:
                 from polygon.ast.filter import Filter
-                from polygon.formulas.filter import FFilter
+                from polygon.visitors.predicate_encoder import PredicateEncoder
 
-                input_table = self.table
+                deleted = {tuple_id: Bool(False) for tuple_id in range(self.table.bound)}
 
                 if len(node.args) == 3 and isinstance(node.args[2], Filter):
-                        f = FFilter(self.table, node.args[2], self.env)
-                        input_table = f.output
+                    pred_encoder = PredicateEncoder(self.table, node.args[2].predicate, self.env)
+                    for tuple_id in range(self.table.bound):
+                        val, null = pred_encoder.predicate_for_tuple(tuple_id)
+                        deleted[tuple_id] = If(null, Bool(True), Not(val))
 
                 if node.operator == 'count' and not node.args[0] and isinstance(node.args[1], Attribute) and node.args[1].name == '*':
-                        return Sum([Not(Deleted(input_table.table_id, tuple_id)) for tuple_id in range(input_table.bound)]), Bool(False)
+                    return Sum([If(Or([deleted[tuple_id], Deleted(self.table.table_id, tuple_id)]), Int(0), Int(1)) for tuple_id in range(self.table.bound)]), Bool(False)
 
-                agg_exp_encoder = ExpressionEncoder(input_table, self.env)
+                agg_exp_encoder = ExpressionEncoder(self.table, self.env)
                 to_be_aggregated = []
                 
-                for tuple_id in range(input_table.bound):
+                for tuple_id in range(self.table.bound):
                     # ret is a (val, null, deleted) pair
                     ret = (
                         *agg_exp_encoder.expression_for_tuple(node.args[1], tuple_id),
-                        Deleted(input_table.table_id, tuple_id)
+                        If(deleted[tuple_id], Bool(True), Deleted(self.table.table_id, tuple_id))
                     )
                     to_be_aggregated.append(ret)
 
@@ -546,7 +548,6 @@ class ExpressionEncoder:
                     date_val, date_null = node.args[0].accept(self)
                     days_to_add, _ = node.args[1].accept(self)
                     return date_val + days_to_add, date_null
-
             if node.operator == 'subdate':
                 if isinstance(node.args[1], Literal):
                     date_val, date_null = node.args[0].accept(self)
